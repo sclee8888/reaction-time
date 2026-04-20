@@ -317,6 +317,7 @@
     <button id="start" class="btn">Start</button>
     <button id="stop" class="btn secondary" disabled>Stop</button>
     <button id="testSound" class="btn secondary" type="button">🔊 Test sound</button>
+    <span id="audioStatus" style="font-size:12px;color:var(--muted);"></span>
     <span id="progress" style="margin-left:auto;color:var(--muted);"></span>
   </div>
 
@@ -451,36 +452,110 @@
     b.addEventListener('click', () => { if (!running) setMode(b.dataset.mode); });
   });
 
+  // Audio strategy: primary = HTMLAudioElement with a pre-generated WAV data URI
+  // (most reliable on iOS). Fallback = Web Audio oscillator. Both get unlocked
+  // on the first user gesture.
   let audioUnlocked = false;
+  let beepAudio = null;
+  let lastAudioError = '';
+
+  function makeBeepWavDataUri(freq, durationSec, sampleRate) {
+    freq = freq || 880;
+    durationSec = durationSec || 0.3;
+    sampleRate = sampleRate || 22050;
+    const numSamples = Math.floor(sampleRate * durationSec);
+    const dataSize = numSamples * 2;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    let p = 0;
+    const writeStr = (s) => { for (let i = 0; i < s.length; i++) view.setUint8(p++, s.charCodeAt(i)); };
+    const writeUint32 = (v) => { view.setUint32(p, v, true); p += 4; };
+    const writeUint16 = (v) => { view.setUint16(p, v, true); p += 2; };
+    writeStr('RIFF'); writeUint32(36 + dataSize); writeStr('WAVE');
+    writeStr('fmt '); writeUint32(16); writeUint16(1); writeUint16(1);
+    writeUint32(sampleRate); writeUint32(sampleRate * 2); writeUint16(2); writeUint16(16);
+    writeStr('data'); writeUint32(dataSize);
+    const fadeSamples = Math.floor(sampleRate * 0.005);
+    for (let i = 0; i < numSamples; i++) {
+      const fade = Math.min(1, i / fadeSamples) * Math.min(1, (numSamples - i) / fadeSamples);
+      const s = Math.sin(2 * Math.PI * freq * i / sampleRate) * fade * 0.6;
+      view.setInt16(p, Math.max(-32768, Math.min(32767, Math.round(s * 32767))), true);
+      p += 2;
+    }
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return 'data:audio/wav;base64,' + btoa(binary);
+  }
+
+  // Pre-load the HTML Audio element.
+  try {
+    beepAudio = new Audio(makeBeepWavDataUri(880, 0.3));
+    beepAudio.preload = 'auto';
+    beepAudio.load();
+  } catch (e) { lastAudioError = 'init: ' + e.message; }
 
   function ensureAudio() {
+    // Web Audio path (used as fallback)
     if (!audioCtx) {
       try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-      catch (e) { return null; }
+      catch (e) { /* ignore */ }
     }
-    // iOS often parks the context in "suspended" state; resume must be called
-    // from a user gesture. Callers invoke ensureAudio() on tap/click.
-    if (audioCtx.state === 'suspended' && typeof audioCtx.resume === 'function') {
+    if (audioCtx && audioCtx.state === 'suspended') {
       try { audioCtx.resume(); } catch (e) {}
     }
-    // On iOS, calling resume() alone isn't enough — we have to actually emit
-    // sound synchronously inside the user gesture. A 1-sample silent buffer
-    // does the trick and fully unlocks audio for later programmatic beeps.
-    if (!audioUnlocked) {
+    if (audioCtx && !audioUnlocked) {
       try {
         const buf = audioCtx.createBuffer(1, 1, 22050);
         const src = audioCtx.createBufferSource();
-        src.buffer = buf;
-        src.connect(audioCtx.destination);
+        src.buffer = buf; src.connect(audioCtx.destination);
         if (src.start) src.start(0); else src.noteOn(0);
-        audioUnlocked = true;
       } catch (e) {}
+    }
+    // HTML Audio unlock: play silently once inside the user gesture.
+    if (beepAudio && !audioUnlocked) {
+      try {
+        const prev = beepAudio.volume;
+        beepAudio.volume = 0;
+        const p = beepAudio.play();
+        if (p && p.then) {
+          p.then(() => {
+            beepAudio.pause();
+            beepAudio.currentTime = 0;
+            beepAudio.volume = prev;
+            audioUnlocked = true;
+            updateAudioStatus('unlocked');
+          }).catch((err) => {
+            lastAudioError = 'unlock: ' + err.message;
+            beepAudio.volume = prev;
+            updateAudioStatus('unlock failed');
+          });
+        } else {
+          beepAudio.pause();
+          beepAudio.currentTime = 0;
+          beepAudio.volume = prev;
+          audioUnlocked = true;
+          updateAudioStatus('unlocked');
+        }
+      } catch (e) {
+        lastAudioError = 'unlock: ' + e.message;
+      }
     }
     return audioCtx;
   }
 
-  // Safety net: unlock on the first tap anywhere on the page, in case the user
-  // interacts with the stage before pressing Start or Test sound.
+  function updateAudioStatus(note) {
+    const el = document.getElementById('audioStatus');
+    if (!el) return;
+    const ctxState = audioCtx ? audioCtx.state : 'no-ctx';
+    const unlocked = audioUnlocked ? 'yes' : 'no';
+    let msg = `audio: ${note || '-'} · ctx:${ctxState} · unlocked:${unlocked}`;
+    if (lastAudioError) msg += ' · err:' + lastAudioError;
+    el.textContent = msg;
+  }
+
+  // Safety net: unlock on the first tap anywhere, in case the user interacts
+  // with the stage before pressing Start or Test sound.
   const firstTapUnlock = () => {
     ensureAudio();
     document.removeEventListener('touchstart', firstTapUnlock, true);
@@ -490,20 +565,45 @@
   document.addEventListener('mousedown', firstTapUnlock, true);
 
   function beep() {
-    const ctx = ensureAudio();
-    if (!ctx) return;
-    // iOS occasionally re-suspends the context; try once more before emitting.
-    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.5, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.3);
+    // Primary: HTML Audio element.
+    if (beepAudio) {
+      try {
+        beepAudio.currentTime = 0;
+        const p = beepAudio.play();
+        if (p && p.catch) p.catch((err) => {
+          lastAudioError = 'play: ' + err.message;
+          updateAudioStatus('play failed, trying WebAudio');
+          beepWebAudio();
+        });
+        return;
+      } catch (e) {
+        lastAudioError = 'play: ' + e.message;
+      }
+    }
+    beepWebAudio();
   }
+
+  function beepWebAudio() {
+    const ctx = audioCtx;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.5, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {
+      lastAudioError = 'webaudio: ' + e.message;
+      updateAudioStatus('webaudio failed');
+    }
+  }
+
+  updateAudioStatus('idle');
 
   function resetStage() {
     stage.classList.remove('ready', 'go', 'early');
@@ -639,6 +739,7 @@
   $('testSound').addEventListener('click', () => {
     ensureAudio();
     beep();
+    setTimeout(() => updateAudioStatus('tested'), 50);
   });
 
   stopBtn.addEventListener('click', () => {
