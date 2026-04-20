@@ -312,7 +312,7 @@
 
   <div class="controls">
     <label>Trials per run:
-      <input id="trials" type="number" min="1" max="30" value="5">
+      <input id="trials" type="number" min="1" max="30" value="3">
     </label>
     <button id="start" class="btn">Start</button>
     <button id="stop" class="btn secondary" disabled>Stop</button>
@@ -445,7 +445,7 @@
       b.classList.toggle('active', b.dataset.mode === m);
     });
     // suggest a sensible default trial count for this mode
-    trialsInput.value = (m === 'mixed') ? 9 : 5;
+    trialsInput.value = (m === 'mixed') ? 9 : 3;
   }
   document.querySelectorAll('.mode-btn').forEach(b => {
     b.addEventListener('click', () => { if (!running) setMode(b.dataset.mode); });
