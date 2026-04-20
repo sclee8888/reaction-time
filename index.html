@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reaction Time Tester</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --good: #4ade80;
+    --bad: #f87171;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px; }
+  h1 { margin: 0 0 4px 0; font-size: 28px; }
+  .sub { color: var(--muted); margin-bottom: 24px; }
+
+  @media (max-width: 560px) {
+    .wrap { padding: 12px; }
+    h1 { font-size: 22px; }
+    .sub { margin-bottom: 16px; font-size: 14px; }
+  }
+
+  .participant {
+    background: var(--panel);
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 720px) {
+    .participant { grid-template-columns: repeat(2, 1fr); }
+  }
+  .participant label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 13px; color: var(--muted);
+  }
+  .participant input, .participant select {
+    padding: 8px 10px;
+    background: #0b1220;
+    color: var(--text);
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 16px; /* >=16px prevents iOS from zooming the page on focus */
+  }
+
+  .modes {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 560px) {
+    .modes { grid-template-columns: repeat(2, 1fr); }
+  }
+  .mode-btn {
+    padding: 12px;
+    background: var(--panel);
+    color: var(--text);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mode-btn:hover { background: #334155; }
+  .mode-btn.active { border-color: var(--accent); background: #0c4a6e; }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .controls label { font-size: 13px; color: var(--muted); }
+  .controls input[type="number"] {
+    width: 72px; padding: 8px; background: #0b1220; color: var(--text);
+    border: 1px solid #334155; border-radius: 6px; font-size: 16px;
+  }
+  .btn {
+    padding: 12px 22px;
+    background: var(--accent);
+    color: #0b1220;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 44px;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn.secondary { background: #475569; color: var(--text); }
+  .btn.danger { background: var(--bad); color: #0b1220; }
+
+  .stage {
+    background: var(--panel);
+    border-radius: 12px;
+    height: 320px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; /* prevents double-tap zoom delay on iOS */
+    margin-bottom: 16px;
+  }
+  @media (max-width: 560px) {
+    .stage { height: 260px; }
+  }
+  @media (max-height: 640px) {
+    .stage { height: 220px; }
+  }
+  .stage.ready { background: #422006; }
+  .stage.go { background: #14532d; }
+  .stage.early { background: #7f1d1d; }
+  .stage-msg {
+    font-size: 32px;
+    font-weight: 700;
+    text-align: center;
+    padding: 20px;
+    z-index: 2;
+  }
+  .stage-sub { font-size: 16px; color: var(--muted); margin-top: 8px; font-weight: 400; }
+  @media (max-width: 560px) {
+    .stage-msg { font-size: 22px; padding: 12px; }
+    .stage-sub { font-size: 13px; }
+  }
+
+  .flash {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: min(220px, 60vw); height: min(220px, 60vw);
+    border-radius: 50%;
+    background: #fef3c7;
+    box-shadow: 0 0 80px 20px #fef3c7;
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.05s;
+  }
+  .flash.on { transform: translate(-50%, -50%) scale(1); }
+
+  .runner {
+    position: absolute;
+    top: 50%;
+    left: -80px;
+    width: 60px; height: 60px;
+    font-size: 60px;
+    transform: translateY(-50%) scaleX(-1);
+  }
+  .runner.staged { left: 20px; }
+  .runner.go {
+    left: calc(100% + 20px);
+    transition: left 0.9s linear;
+  }
+
+  .results {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  @media (max-width: 720px) {
+    .filters { grid-template-columns: repeat(2, 1fr); }
+  }
+  .filters label {
+    display: flex; flex-direction: column; gap: 2px;
+    font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .filters select {
+    padding: 8px;
+    background: #0b1220;
+    color: var(--text);
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 16px;
+  }
+  .breakdown {
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .breakdown table { margin-top: 6px; min-width: 0; }
+  .breakdown th, .breakdown td { padding: 6px 10px; }
+  .breakdown h4 { margin: 12px 0 4px 0; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  @media (max-width: 560px) {
+    .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  }
+  .stat {
+    background: #0b1220;
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-val { font-size: 22px; font-weight: 700; margin-top: 4px; }
+
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    min-width: 520px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid #334155;
+  }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  td.rt { font-variant-numeric: tabular-nums; }
+  .trial-early { color: var(--bad); }
+
+  .export {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+
+  .note {
+    font-size: 13px;
+    color: var(--muted);
+    background: #1e293b;
+    padding: 12px;
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Reaction Time Tester</h1>
+  <div class="sub">Measure how fast you react to light, sound, or movement.</div>
+
+  <div class="participant">
+    <label>Name
+      <input id="name" type="text" placeholder="e.g. Alex">
+    </label>
+    <label>Age range
+      <select id="age">
+        <option value="">—</option>
+        <option value="<10">&lt; 10</option>
+        <option value="10-20">10 to 20</option>
+        <option value="21-35">21 to 35</option>
+        <option value=">35">&gt; 35</option>
+      </select>
+    </label>
+    <label>Gender
+      <select id="gender">
+        <option value="">—</option>
+        <option value="F">Female</option>
+        <option value="M">Male</option>
+        <option value="O">Other</option>
+      </select>
+    </label>
+    <label>Plays sports
+      <select id="sports">
+        <option value="">—</option>
+        <option value="Y">Yes</option>
+        <option value="N">No</option>
+      </select>
+    </label>
+    <label>Plays video games
+      <select id="games">
+        <option value="">—</option>
+        <option value="Y">Yes</option>
+        <option value="N">No</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="modes">
+    <button class="mode-btn active" data-mode="light">💡 Light</button>
+    <button class="mode-btn" data-mode="sound">🔊 Sound</button>
+    <button class="mode-btn" data-mode="movement">🏃 Movement</button>
+    <button class="mode-btn" data-mode="mixed">🎲 Mixed</button>
+  </div>
+
+  <div class="controls">
+    <label>Trials per run:
+      <input id="trials" type="number" min="1" max="30" value="5">
+    </label>
+    <button id="start" class="btn">Start</button>
+    <button id="stop" class="btn secondary" disabled>Stop</button>
+    <button id="testSound" class="btn secondary" type="button">🔊 Test sound</button>
+    <span id="progress" style="margin-left:auto;color:var(--muted);"></span>
+  </div>
+
+  <div class="note">
+    Press <b>SPACE</b> or click the stage when you detect the signal. Reacting before the signal counts as a false start.
+  </div>
+
+  <div id="stage" class="stage" tabindex="0">
+    <div id="stageMsg" class="stage-msg">Click <b>Start</b>, then wait for the signal.<div class="stage-sub">Press SPACE or click to react.</div></div>
+    <div id="flash" class="flash"></div>
+    <div id="runner" class="runner">🏃</div>
+  </div>
+
+  <div class="results">
+    <h3 style="margin:0 0 8px 0;font-size:16px;">Reporting</h3>
+    <div class="filters">
+      <label>Stimulus
+        <select id="fStim">
+          <option value="">All</option>
+          <option value="light">Light</option>
+          <option value="sound">Sound</option>
+          <option value="movement">Movement</option>
+        </select>
+      </label>
+      <label>Name
+        <select id="fName"><option value="">All</option></select>
+      </label>
+      <label>Age
+        <select id="fAge">
+          <option value="">All</option>
+          <option value="<10">&lt; 10</option>
+          <option value="10-20">10 to 20</option>
+          <option value="21-35">21 to 35</option>
+          <option value=">35">&gt; 35</option>
+        </select>
+      </label>
+      <label>Gender
+        <select id="fGender">
+          <option value="">All</option>
+          <option value="F">Female</option>
+          <option value="M">Male</option>
+          <option value="O">Other</option>
+        </select>
+      </label>
+      <label>Sports
+        <select id="fSports">
+          <option value="">All</option>
+          <option value="Y">Yes</option>
+          <option value="N">No</option>
+        </select>
+      </label>
+      <label>Video games
+        <select id="fGames">
+          <option value="">All</option>
+          <option value="Y">Yes</option>
+          <option value="N">No</option>
+        </select>
+      </label>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Attempts</div><div id="sCount" class="stat-val">—</div></div>
+      <div class="stat"><div class="stat-label">Best</div><div id="sBest" class="stat-val">—</div></div>
+      <div class="stat"><div class="stat-label">Average</div><div id="sAvg" class="stat-val">—</div></div>
+      <div class="stat"><div class="stat-label">Worst</div><div id="sWorst" class="stat-val">—</div></div>
+    </div>
+    <div id="breakdown" class="breakdown"></div>
+    <div class="table-scroll">
+      <table id="trialsTable">
+        <thead>
+          <tr>
+            <th>#</th><th>Name</th><th>Age</th><th>Gender</th><th>Sports</th><th>Games</th><th>Stimulus</th><th>Reaction (ms)</th>
+          </tr>
+        </thead>
+        <tbody id="trialsBody"></tbody>
+      </table>
+    </div>
+    <div class="export">
+      <button id="clear" class="btn secondary">Clear data</button>
+      <button id="export" class="btn">Download CSV</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage');
+  const stageMsg = $('stageMsg');
+  const flash = $('flash');
+  const runner = $('runner');
+  const startBtn = $('start');
+  const stopBtn = $('stop');
+  const trialsInput = $('trials');
+  const progress = $('progress');
+  const trialsBody = $('trialsBody');
+
+  let mode = 'light';
+  let activeStimulus = 'light'; // actual stimulus for current trial (differs from mode in mixed)
+  let running = false;
+  let waitingForSignal = false;
+  let signalTime = 0;
+  let currentTrial = 0;
+  let totalTrials = 5;
+  let trialPlan = []; // ordered stimuli for the current run
+  let runTimes = []; // reaction times for the current run
+  let allResults = JSON.parse(localStorage.getItem('rtResults') || '[]');
+  let audioCtx = null;
+  let pendingTimeout = null;
+
+  function buildTrialPlan(m, n) {
+    if (m !== 'mixed') return Array(n).fill(m);
+    // distribute as evenly as possible among light/sound/movement, then shuffle
+    const types = ['light', 'sound', 'movement'];
+    const plan = [];
+    for (let i = 0; i < n; i++) plan.push(types[i % 3]);
+    for (let i = plan.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [plan[i], plan[j]] = [plan[j], plan[i]];
+    }
+    return plan;
+  }
+
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('.mode-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === m);
+    });
+    // suggest a sensible default trial count for this mode
+    trialsInput.value = (m === 'mixed') ? 9 : 5;
+  }
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.addEventListener('click', () => { if (!running) setMode(b.dataset.mode); });
+  });
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { return null; }
+    }
+    // iOS often creates the context in "suspended" state; resume must be called
+    // from a user gesture. Callers invoke ensureAudio() on tap/click.
+    if (audioCtx.state === 'suspended' && typeof audioCtx.resume === 'function') {
+      audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+  }
+
+  function beep() {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.25);
+  }
+
+  function resetStage() {
+    stage.classList.remove('ready', 'go', 'early');
+    flash.classList.remove('on');
+    runner.classList.remove('go', 'staged');
+  }
+
+  function showMsg(html) {
+    stageMsg.innerHTML = html;
+    stageMsg.style.display = '';
+  }
+  function hideMsg() { stageMsg.style.display = 'none'; }
+
+  function startTrial() {
+    if (!running) return;
+    currentTrial++;
+    activeStimulus = trialPlan[currentTrial - 1] || mode;
+    progress.textContent = `Trial ${currentTrial} of ${totalTrials}`;
+    resetStage();
+    stage.classList.add('ready');
+    const hint = (mode === 'mixed')
+      ? 'Wait — the signal could be light, sound, or movement.'
+      : `Wait for the ${mode} signal.`;
+    showMsg(`Get ready…<div class="stage-sub">${hint}</div>`);
+    waitingForSignal = false;
+
+    // For movement trials, show the runner stationary on the left during the
+    // wait so the reaction is to motion — not to the runner appearing.
+    if (activeStimulus === 'movement') {
+      runner.classList.add('staged');
+    }
+
+    const delay = 1500 + Math.random() * 2500; // 1.5s – 4s
+    pendingTimeout = setTimeout(() => {
+      if (!running) return;
+      // Keep the stage background constant so the stimulus itself is the only cue.
+      // (Previously the background flipped to green, which contaminated sound/movement trials.)
+      hideMsg();
+      waitingForSignal = true;
+      signalTime = performance.now();
+      if (activeStimulus === 'light') {
+        flash.classList.add('on');
+      } else if (activeStimulus === 'sound') {
+        beep();
+      } else if (activeStimulus === 'movement') {
+        runner.classList.remove('staged');
+        runner.classList.add('go');
+      }
+    }, delay);
+  }
+
+  function recordReaction(rt) {
+    waitingForSignal = false;
+    runTimes.push(rt);
+    const entry = {
+      ts: Date.now(),
+      name: $('name').value || '',
+      age: $('age').value || '',
+      gender: $('gender').value || '',
+      sports: $('sports').value || '',
+      games: $('games').value || '',
+      stimulus: activeStimulus,
+      mode: mode,
+      rt_ms: Math.round(rt),
+    };
+    allResults.push(entry);
+    localStorage.setItem('rtResults', JSON.stringify(allResults));
+    renderStats();
+
+    const stimLabel = (mode === 'mixed') ? ` (${activeStimulus})` : '';
+    showMsg(`${Math.round(rt)} ms${stimLabel}<div class="stage-sub">Next trial in a moment…</div>`);
+
+    if (currentTrial < totalTrials) {
+      setTimeout(startTrial, 1200);
+    } else {
+      finishRun();
+    }
+  }
+
+  function falseStart() {
+    clearTimeout(pendingTimeout);
+    resetStage();
+    stage.classList.add('early');
+    showMsg(`Too early!<div class="stage-sub">Wait for the signal. Restarting trial…</div>`);
+    waitingForSignal = false;
+    currentTrial--; // redo this trial (keeps the same planned stimulus)
+    setTimeout(() => {
+      if (running) startTrial();
+    }, 1500);
+  }
+
+  function finishRun() {
+    running = false;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    const avg = runTimes.length ? runTimes.reduce((a,b)=>a+b,0) / runTimes.length : 0;
+    resetStage();
+    showMsg(`Run complete!<div class="stage-sub">Avg ${Math.round(avg)} ms over ${runTimes.length} trials.</div>`);
+    progress.textContent = '';
+  }
+
+  function handleReact() {
+    if (!running) return;
+    if (waitingForSignal) {
+      const rt = performance.now() - signalTime;
+      recordReaction(rt);
+    } else {
+      falseStart();
+    }
+  }
+
+  stage.addEventListener('click', handleReact);
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      handleReact();
+    }
+  });
+
+  startBtn.addEventListener('click', () => {
+    totalTrials = Math.max(1, Math.min(30, parseInt(trialsInput.value) || 5));
+    trialPlan = buildTrialPlan(mode, totalTrials);
+    runTimes = [];
+    currentTrial = 0;
+    running = true;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    // prime/resume audio on user gesture (required by iOS)
+    ensureAudio();
+    startTrial();
+  });
+
+  $('testSound').addEventListener('click', () => {
+    ensureAudio();
+    beep();
+  });
+
+  stopBtn.addEventListener('click', () => {
+    running = false;
+    clearTimeout(pendingTimeout);
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    resetStage();
+    showMsg('Stopped.<div class="stage-sub">Click Start to begin again.</div>');
+    progress.textContent = '';
+  });
+
+  function getFilters() {
+    return {
+      stimulus: $('fStim').value,
+      name: $('fName').value,
+      age: $('fAge').value,
+      gender: $('fGender').value,
+      sports: $('fSports').value,
+      games: $('fGames').value,
+    };
+  }
+
+  function matchesFilters(r, f) {
+    if (f.stimulus && r.stimulus !== f.stimulus) return false;
+    if (f.name && r.name !== f.name) return false;
+    if (f.age && r.age !== f.age) return false;
+    if (f.gender && r.gender !== f.gender) return false;
+    if (f.sports && r.sports !== f.sports) return false;
+    if (f.games && r.games !== f.games) return false;
+    return true;
+  }
+
+  function refreshNameFilter() {
+    const sel = $('fName');
+    const prev = sel.value;
+    const names = [...new Set(allResults.map(r => r.name).filter(n => n))].sort();
+    sel.innerHTML = '<option value="">All</option>' +
+      names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+    if (names.includes(prev)) sel.value = prev;
+  }
+
+  function summarize(rows) {
+    const rts = rows.map(r => r.rt_ms);
+    if (!rts.length) return null;
+    const sum = rts.reduce((a,b)=>a+b,0);
+    return {
+      count: rts.length,
+      best: Math.min(...rts),
+      worst: Math.max(...rts),
+      avg: Math.round(sum / rts.length),
+    };
+  }
+
+  function breakdownTable(title, rows, key, labels) {
+    const groups = {};
+    rows.forEach(r => {
+      const k = r[key] || '(blank)';
+      (groups[k] = groups[k] || []).push(r);
+    });
+    const keys = Object.keys(groups).sort();
+    if (!keys.length) return '';
+    let html = `<h4>By ${title}</h4><div class="table-scroll"><table><thead><tr><th>${title}</th><th>Attempts</th><th>Avg (ms)</th><th>Best (ms)</th></tr></thead><tbody>`;
+    keys.forEach(k => {
+      const s = summarize(groups[k]);
+      const label = (labels && labels[k]) || k;
+      html += `<tr><td>${escapeHtml(label)}</td><td>${s.count}</td><td class="rt">${s.avg}</td><td class="rt">${s.best}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  function renderStats() {
+    refreshNameFilter();
+    const f = getFilters();
+    const filtered = allResults.filter(r => matchesFilters(r, f));
+    const s = summarize(filtered);
+    $('sCount').textContent = s ? s.count : '—';
+    $('sBest').textContent = s ? s.best + ' ms' : '—';
+    $('sWorst').textContent = s ? s.worst + ' ms' : '—';
+    $('sAvg').textContent = s ? s.avg + ' ms' : '—';
+
+    const genderLabels = { F: 'Female', M: 'Male', O: 'Other' };
+    const yn = { Y: 'Yes', N: 'No' };
+    let bd = '';
+    bd += breakdownTable('Stimulus', filtered, 'stimulus');
+    bd += breakdownTable('Age', filtered, 'age');
+    bd += breakdownTable('Gender', filtered, 'gender', genderLabels);
+    bd += breakdownTable('Plays sports', filtered, 'sports', yn);
+    bd += breakdownTable('Plays video games', filtered, 'games', yn);
+    $('breakdown').innerHTML = bd;
+
+    trialsBody.innerHTML = '';
+    filtered.slice().reverse().slice(0, 100).forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${filtered.length - i}</td>
+        <td>${escapeHtml(r.name)}</td>
+        <td>${escapeHtml(r.age)}</td>
+        <td>${escapeHtml(genderLabels[r.gender] || r.gender || '')}</td>
+        <td>${escapeHtml(yn[r.sports] || r.sports || '')}</td>
+        <td>${escapeHtml(yn[r.games] || r.games || '')}</td>
+        <td>${r.stimulus}</td>
+        <td class="rt">${r.rt_ms}</td>`;
+      trialsBody.appendChild(tr);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  }
+
+  $('export').addEventListener('click', () => {
+    const header = 'timestamp,name,age,gender,sports,games,mode,stimulus,reaction_ms\n';
+    const rows = allResults.map(r =>
+      [new Date(r.ts).toISOString(), r.name, r.age, r.gender, r.sports || '', r.games || '', r.mode || r.stimulus, r.stimulus, r.rt_ms]
+        .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')
+    ).join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reaction-times-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  $('clear').addEventListener('click', () => {
+    if (confirm('Delete all recorded trials?')) {
+      allResults = [];
+      localStorage.removeItem('rtResults');
+      renderStats();
+    }
+  });
+
+  ['name','age','gender','sports','games'].forEach(id => $(id).addEventListener('input', renderStats));
+  ['fStim','fName','fAge','fGender','fSports','fGames'].forEach(id => $(id).addEventListener('change', renderStats));
+
+  renderStats();
+})();
+</script>
+</body>
+</html>
