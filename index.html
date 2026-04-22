@@ -233,12 +233,9 @@
   }
   .filters {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
     gap: 8px;
     margin-bottom: 12px;
-  }
-  @media (max-width: 720px) {
-    .filters { grid-template-columns: repeat(2, 1fr); }
   }
   .filters label {
     display: flex; flex-direction: column; gap: 2px;
@@ -428,6 +425,22 @@
           <option value="N">No</option>
         </select>
       </label>
+      <label>Device
+        <select id="fDevice">
+          <option value="">All</option>
+          <option value="Desktop">Desktop</option>
+          <option value="Tablet">Tablet</option>
+          <option value="Mobile">Mobile</option>
+        </select>
+      </label>
+      <label>Viewport
+        <select id="fVp">
+          <option value="">All</option>
+          <option value="Small">Small (&lt;768px)</option>
+          <option value="Medium">Medium (768–1199)</option>
+          <option value="Large">Large (≥1200)</option>
+        </select>
+      </label>
     </div>
     <div class="stats">
       <div class="stat"><div class="stat-label">Attempts</div><div id="sCount" class="stat-val">—</div></div>
@@ -440,7 +453,7 @@
       <table id="trialsTable">
         <thead>
           <tr>
-            <th>#</th><th>Name</th><th>Age</th><th>Gender</th><th>Sports</th><th>Games</th><th>Stimulus</th><th>Reaction (ms)</th>
+            <th>#</th><th>Name</th><th>Age</th><th>Gender</th><th>Sports</th><th>Games</th><th>Device</th><th>Viewport</th><th>Stimulus</th><th>Reaction (ms)</th>
           </tr>
         </thead>
         <tbody id="trialsBody"></tbody>
@@ -478,6 +491,27 @@
   let allResults = JSON.parse(localStorage.getItem('rtResults') || '[]');
   let audioCtx = null;
   let pendingTimeout = null;
+
+  function detectDevice() {
+    const ua = navigator.userAgent || '';
+    const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
+    const w = Math.max(window.innerWidth || 0, document.documentElement.clientWidth || 0);
+    // iPadOS 13+ reports UA as Mac; distinguish by touch support.
+    const isIPad = /iPad/.test(ua) || (ua.includes('Macintosh') && hasTouch);
+    const isPhone = /iPhone|iPod|Android.*Mobile|Windows Phone|webOS/i.test(ua);
+    if (isIPad) return 'Tablet';
+    if (isPhone) return 'Mobile';
+    if (hasTouch && w >= 600 && w < 1280) return 'Tablet';
+    if (hasTouch && w < 600) return 'Mobile';
+    return 'Desktop';
+  }
+
+  function vpBucket(w) {
+    if (!w) return '';
+    if (w < 768) return 'Small';
+    if (w < 1200) return 'Medium';
+    return 'Large';
+  }
 
   function buildTrialPlan(m, n) {
     if (m !== 'mixed') return Array(n).fill(m);
@@ -733,6 +767,10 @@
       stimulus: activeStimulus,
       mode: mode,
       rt_ms: Math.round(rt),
+      device: detectDevice(),
+      vp_w: window.innerWidth || 0,
+      vp_h: window.innerHeight || 0,
+      orientation: (window.innerWidth || 0) >= (window.innerHeight || 0) ? 'landscape' : 'portrait',
     };
     allResults.push(entry);
     localStorage.setItem('rtResults', JSON.stringify(allResults));
@@ -842,6 +880,8 @@
       gender: $('fGender').value,
       sports: $('fSports').value,
       games: $('fGames').value,
+      device: $('fDevice').value,
+      vp: $('fVp').value,
     };
   }
 
@@ -852,6 +892,8 @@
     if (f.gender && r.gender !== f.gender) return false;
     if (f.sports && r.sports !== f.sports) return false;
     if (f.games && r.games !== f.games) return false;
+    if (f.device && (r.device || '') !== f.device) return false;
+    if (f.vp && vpBucket(r.vp_w) !== f.vp) return false;
     return true;
   }
 
@@ -912,11 +954,16 @@
     bd += breakdownTable('Gender', filtered, 'gender', genderLabels);
     bd += breakdownTable('Plays sports', filtered, 'sports', yn);
     bd += breakdownTable('Plays video games', filtered, 'games', yn);
+    bd += breakdownTable('Device', filtered, 'device');
+    // Synthesize a viewport-bucket field for the breakdown.
+    const vpRows = filtered.map(r => Object.assign({}, r, { vp_bucket: vpBucket(r.vp_w) || '(unknown)' }));
+    bd += breakdownTable('Viewport size', vpRows, 'vp_bucket');
     $('breakdown').innerHTML = bd;
 
     trialsBody.innerHTML = '';
     filtered.slice().reverse().slice(0, 100).forEach((r, i) => {
       const tr = document.createElement('tr');
+      const vpCell = r.vp_w ? `${r.vp_w}×${r.vp_h}` : '';
       tr.innerHTML = `
         <td>${filtered.length - i}</td>
         <td>${escapeHtml(r.name)}</td>
@@ -924,6 +971,8 @@
         <td>${escapeHtml(genderLabels[r.gender] || r.gender || '')}</td>
         <td>${escapeHtml(yn[r.sports] || r.sports || '')}</td>
         <td>${escapeHtml(yn[r.games] || r.games || '')}</td>
+        <td>${escapeHtml(r.device || '')}</td>
+        <td>${escapeHtml(vpCell)}</td>
         <td>${r.stimulus}</td>
         <td class="rt">${r.rt_ms}</td>`;
       trialsBody.appendChild(tr);
@@ -935,9 +984,11 @@
   }
 
   $('export').addEventListener('click', () => {
-    const header = 'timestamp,name,age,gender,sports,games,mode,stimulus,reaction_ms\n';
+    const header = 'timestamp,name,age,gender,sports,games,device,viewport_width,viewport_height,orientation,mode,stimulus,reaction_ms\n';
     const rows = allResults.map(r =>
-      [new Date(r.ts).toISOString(), r.name, r.age, r.gender, r.sports || '', r.games || '', r.mode || r.stimulus, r.stimulus, r.rt_ms]
+      [new Date(r.ts).toISOString(), r.name, r.age, r.gender, r.sports || '', r.games || '',
+       r.device || '', r.vp_w || '', r.vp_h || '', r.orientation || '',
+       r.mode || r.stimulus, r.stimulus, r.rt_ms]
         .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
@@ -958,7 +1009,7 @@
   });
 
   ['name','age','gender','sports','games'].forEach(id => $(id).addEventListener('input', renderStats));
-  ['fStim','fName','fAge','fGender','fSports','fGames'].forEach(id => $(id).addEventListener('change', renderStats));
+  ['fStim','fName','fAge','fGender','fSports','fGames','fDevice','fVp'].forEach(id => $(id).addEventListener('change', renderStats));
 
   renderStats();
 })();
