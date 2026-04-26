@@ -164,6 +164,7 @@
     color: var(--muted);
     z-index: 3;
     display: none;
+    pointer-events: none;
   }
   .stage.active .stage-progress { display: block; }
   .stage-exit {
@@ -190,6 +191,7 @@
     text-align: center;
     padding: 20px;
     z-index: 2;
+    pointer-events: none;
   }
   .stage-sub { font-size: 16px; color: var(--muted); margin-top: 8px; font-weight: 400; }
   @media (max-width: 560px) {
@@ -206,6 +208,7 @@
     box-shadow: 0 0 120px 40px #fde047;
     transform: translate(-50%, -50%) scale(0);
     transition: transform 0.05s;
+    pointer-events: none;
   }
   .flash.on { transform: translate(-50%, -50%) scale(1); }
 
@@ -218,6 +221,7 @@
     line-height: 1;
     transform: translateY(-50%) scaleX(-1);
     filter: drop-shadow(0 0 8px rgba(0,0,0,0.6));
+    pointer-events: none;
   }
   .runner.staged { left: 20px; }
   .runner.go {
@@ -739,8 +743,8 @@
       // Keep the stage background constant so the stimulus itself is the only cue.
       // (Previously the background flipped to green, which contaminated sound/movement trials.)
       hideMsg();
-      waitingForSignal = true;
       signalTime = performance.now();
+      waitingForSignal = true;
       if (activeStimulus === 'light') {
         // Flash the whole stage AND the circle — unmissable.
         stage.classList.add('light-on');
@@ -819,11 +823,35 @@
     }
   }
 
-  stage.addEventListener('click', handleReact);
+  // Use pointerdown (or touchstart fallback) instead of click — on iOS the
+  // click event fires only after the full touch sequence completes, which is
+  // both slower (adds tens of ms) and unreliable (iOS may swallow it if it
+  // suspects a scroll). pointerdown fires the moment the finger touches.
+  let lastReactTs = 0;
+  function onReactInput(e) {
+    if (!running) return;
+    // Ignore taps on the stage's Stop button (it has its own handler).
+    if (e && e.target && e.target.closest && e.target.closest('.stage-exit')) return;
+    const now = performance.now();
+    if (now - lastReactTs < 80) return; // suppress duplicate from synthetic click
+    lastReactTs = now;
+    if (e && e.cancelable && e.preventDefault) e.preventDefault();
+    handleReact();
+  }
+
+  if ('PointerEvent' in window) {
+    stage.addEventListener('pointerdown', onReactInput);
+  } else {
+    stage.addEventListener('touchstart', onReactInput, { passive: false });
+    stage.addEventListener('mousedown', onReactInput);
+  }
+  // Belt-and-suspenders: also listen for click in case pointerdown is missed.
+  stage.addEventListener('click', onReactInput);
+
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space') {
       e.preventDefault();
-      handleReact();
+      onReactInput(e);
     }
   });
   // While running, block iOS from scrolling or bouncing the viewport —
