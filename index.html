@@ -487,6 +487,7 @@
   let activeStimulus = 'light'; // actual stimulus for current trial (differs from mode in mixed)
   let running = false;
   let waitingForSignal = false;
+  let tapAcceptable = false; // true between trial start and reaction; ignores stray taps in between
   let signalTime = 0;
   let currentTrial = 0;
   let totalTrials = 5;
@@ -725,6 +726,7 @@
     document.getElementById('stageProgress').textContent = progressText;
     resetStage();
     stage.classList.add('ready');
+    tapAcceptable = true; // taps from now until reaction count (early = false start)
     const hint = (mode === 'mixed')
       ? 'Wait — the signal could be light, sound, or movement.'
       : `Wait for the ${mode} signal.`;
@@ -760,6 +762,7 @@
 
   function recordReaction(rt) {
     waitingForSignal = false;
+    tapAcceptable = false; // ignore the synthetic click iOS fires after pointerdown
     runTimes.push(rt);
     const entry = {
       ts: Date.now(),
@@ -796,6 +799,7 @@
     stage.classList.add('early');
     showMsg(`Too early!<div class="stage-sub">Wait for the signal. Restarting trial…</div>`);
     waitingForSignal = false;
+    tapAcceptable = false; // ignore further taps until next trial begins
     currentTrial--; // redo this trial (keeps the same planned stimulus)
     setTimeout(() => {
       if (running) startTrial();
@@ -825,16 +829,13 @@
 
   // Use pointerdown (or touchstart fallback) instead of click — on iOS the
   // click event fires only after the full touch sequence completes, which is
-  // both slower (adds tens of ms) and unreliable (iOS may swallow it if it
-  // suspects a scroll). pointerdown fires the moment the finger touches.
-  let lastReactTs = 0;
+  // both slower and unreliable. pointerdown fires the moment the finger
+  // touches.
   function onReactInput(e) {
     if (!running) return;
+    if (!tapAcceptable) return; // gate strays during result display / pre-trial
     // Ignore taps on the stage's Stop button (it has its own handler).
     if (e && e.target && e.target.closest && e.target.closest('.stage-exit')) return;
-    const now = performance.now();
-    if (now - lastReactTs < 80) return; // suppress duplicate from synthetic click
-    lastReactTs = now;
     if (e && e.cancelable && e.preventDefault) e.preventDefault();
     handleReact();
   }
@@ -845,8 +846,9 @@
     stage.addEventListener('touchstart', onReactInput, { passive: false });
     stage.addEventListener('mousedown', onReactInput);
   }
-  // Belt-and-suspenders: also listen for click in case pointerdown is missed.
-  stage.addEventListener('click', onReactInput);
+  // Note: we deliberately do NOT bind 'click'. iOS fires a synthetic click
+  // after pointerdown which would cause a phantom "Too early!" on the next
+  // trial. tapAcceptable also ignores it, but skipping the listener is cleaner.
 
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space') {
