@@ -709,6 +709,12 @@
   function exitRunMode() {
     document.body.classList.remove('running');
     stage.classList.remove('active');
+    // After a run, return the user to the top of the page (the "home" view).
+    // While `body.running` was applied, the body was `position: fixed`, which
+    // preserves the underlying scroll position on iOS. Without an explicit
+    // scroll, the user is left looking at the stage panel showing "Run
+    // complete!" rather than the title / participant inputs / Start button.
+    window.scrollTo(0, 0);
   }
 
   function showMsg(html) {
