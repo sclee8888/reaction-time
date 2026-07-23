@@ -20,13 +20,15 @@ Just open [`index.html`](index.html) in any modern browser. No build step, no se
 
 ## Bonus game: Super Soccer 64 ⚽
 
-A separate two-player soccer game with N64-style low-poly 3D graphics lives in [`soccer.html`](soccer.html) — it doesn't touch the reaction-time app.
+A separate 4-a-side soccer game with N64-style low-poly 3D graphics lives in [`soccer.html`](soccer.html) — it doesn't touch the reaction-time app.
 
 **Play it:** https://sclee8888.github.io/reaction-time/soccer.html (or just open `soccer.html` in a browser)
 
-- Player 1 (Red): **WASD** to move, **SPACE**/**F** to kick
-- Player 2 (Blue): **Arrow keys** to move, **ENTER**/**Right Shift** to kick
-- 2-minute match, arena walls (no throw-ins), golden goal if tied
+- **1 or 2 players**: press **1** on the menu for 1P vs CPU, **2** (or Enter) for 2 players
+- 4-a-side teams: you control one player (marked with a colored ring) while **AI teammates** and an **AI goalkeeper** cover the rest
+- Player 1 (Red): **WASD** move, **SPACE**/**F** kick, **E**/**Q** switch player
+- Player 2 (Blue): **Arrow keys** move, **ENTER**/**Right Shift** kick, **/** or **.** switch player
+- 2-minute match, arena walls (no throw-ins), and a **penalty shootout** if tied — aim with left/right (loft with up/down), and the defending player picks the keeper's dive
 - Rendered with raw WebGL: flat-shaded low-poly models, low-res pixelated framebuffer, blob shadows, crowd, and chiptune-style sound effects
 
 ## Notes on iPad
