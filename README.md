@@ -18,6 +18,19 @@ A single-page web app for a science project measuring reaction time to **light**
 
 Just open [`index.html`](index.html) in any modern browser. No build step, no server.
 
+## Bonus game: Sheep Kart 64 🐑
+
+A Mario-Kart-style racing game where everyone is a sheep, in the same N64 low-poly style. Lives in [`sheepkart.html`](sheepkart.html) — separate from everything else.
+
+**Play it:** https://sclee8888.github.io/reaction-time/sheepkart.html (or just open `sheepkart.html` in a browser)
+
+- **Modes:** Single Race, **Grand Prix** (3 races, championship points), and **Team Race** (red vs blue)
+- **1 or 2 players** (2P is split-screen) plus **AI competitors** filling an 8-sheep field, with rubber-banding
+- 3 tracks: Woolly Meadows, Sunset Dunes, Snowy Summit — boost pads, item boxes, minimap, 3 laps
+- **Items:** 💨 zoomies boost, 🟤 homing mud ball, 🛡️ wool shield, ✂️ shears (everyone else gets sheared and slows down!)
+- P1: **WASD** + **SPACE**/**F** for items — P2: **Arrow keys** + **ENTER**/**Right Shift**
+- Engine bleats, baaas, countdown, checkered flag — all raw WebGL + WebAudio, no libraries
+
 ## Bonus game: Super Soccer 64 ⚽
 
 A separate 4-a-side soccer game with N64-style low-poly 3D graphics lives in [`soccer.html`](soccer.html) — it doesn't touch the reaction-time app.
